@@ -1,0 +1,24 @@
+# fly.toml app configuration file generated for azi-admin-ui on 2026-06-14T23:05:32+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'azi-admin-ui'
+primary_region = 'iad'
+
+[build]
+
+[env]
+  BACKEND_ORIGIN = 'https://azi-backend-preview.fly.dev'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'suspend'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '512mb'

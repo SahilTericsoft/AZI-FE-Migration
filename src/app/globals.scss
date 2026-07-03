@@ -1,0 +1,22 @@
+// Global base styles. MUI's CssBaseline handles most resets; this covers the
+// document-level bits and the brand font wiring.
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: var(--font-lato), Lato, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

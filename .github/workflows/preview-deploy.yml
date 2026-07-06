@@ -45,11 +45,18 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
+      - run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - uses: docker/setup-buildx-action@v3
+
       - name: Build and push image
-        run: |
-          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=azi-fe
+          cache-to: type=gha,scope=azi-fe,mode=max
 
       - name: Deploy to Cloud Run
         id: deploy

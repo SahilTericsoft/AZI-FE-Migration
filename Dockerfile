@@ -4,7 +4,7 @@
 FROM node:22-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # ---- builder: compile the Next standalone server ----
 FROM node:22-slim AS builder

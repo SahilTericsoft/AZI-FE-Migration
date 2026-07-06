@@ -50,6 +50,8 @@ jobs:
           context: .
           push: true
           tags: ${{ env.IMAGE }}
+          build-args: |
+            BACKEND_ORIGIN=${{ env.BACKEND_ORIGIN }}
           cache-from: type=gha,scope=azi-fe
           cache-to: type=gha,scope=azi-fe,mode=max
 
@@ -67,7 +69,6 @@ jobs:
             --min-instances 0 \
             --max-instances 3 \
             --cpu-boost \
-            --set-env-vars "BACKEND_ORIGIN=$BACKEND_ORIGIN" \
             --quiet
 
           URL=$(gcloud run services describe "$SERVICE" \

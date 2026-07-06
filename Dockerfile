@@ -15,6 +15,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # NEXT_PUBLIC_* is baked into the client bundle at build time. The browser only
 # ever calls the same-origin proxy path, so this is a constant.
 ENV NEXT_PUBLIC_API_BASE_URL=/api/backend
+# next.config.ts reads BACKEND_ORIGIN inside rewrites(), which Next.js
+# evaluates during `next build` and bakes into the compiled routes
+# manifest — a runtime env var on the running container has no effect on
+# it. It must be supplied as a build arg instead.
+ARG BACKEND_ORIGIN
+ENV BACKEND_ORIGIN=$BACKEND_ORIGIN
 RUN npm run build
 
 # ---- runner: minimal image that serves the standalone output ----

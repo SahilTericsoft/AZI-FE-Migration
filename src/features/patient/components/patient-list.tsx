@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { useQuery } from "@tanstack/react-query";
-import { Download, Eye, Flag, Plus, Upload } from "lucide-react";
+import { Download, Eye, Flag, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -43,8 +43,9 @@ import { useUserOptions } from "@/features/user/user.queries";
 import { userFullName } from "@/features/user/user.types";
 
 import { patientApi } from "../patient.api";
-import { usePatientList } from "../patient.queries";
-import type { Patient } from "../patient.types";
+import { GENDER_OPTIONS as PATIENT_GENDERS } from "../patient.options";
+import { usePatientList, useRecoverPatient } from "../patient.queries";
+import type { Patient, PatientListQuery } from "../patient.types";
 import PatientBulkUploadDialog from "./patient-bulk-upload-dialog";
 import PatientFormDialog from "./patient-form-dialog";
 
@@ -63,11 +64,8 @@ const COLUMNS: ColumnDef[] = [
   { key: "linkedFacilities", label: "Linked Facilities", mandatory: true },
 ];
 
-const GENDER_OPTIONS = [
-  { value: "male", label: "Male" },
-  { value: "female", label: "Female" },
-  { value: "other", label: "Other" },
-];
+// Shared with the create/edit form so filter values match stored values.
+const GENDER_OPTIONS = PATIENT_GENDERS.map((o) => ({ value: o.code, label: o.title }));
 
 interface Filters {
   genders: string[];
@@ -111,6 +109,8 @@ export default function PatientList() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [flagged, setFlagged] = useState(false);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const recover = useRecoverPatient();
 
   const { isVisible, visible, toggle } = useColumnPrefs("patient-list-columns", COLUMNS);
   const { data: usersData } = useUserOptions();
@@ -134,44 +134,74 @@ export default function PatientList() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  useEffect(() => setPage(0), [filters, flagged]);
+  useEffect(() => setPage(0), [filters, flagged, showDeleted]);
+
+  // Filters shared by the list query and the CSV export (which pages through
+  // everything). Pagination is added separately.
+  const baseQuery: PatientListQuery = useMemo(
+    () => ({
+      search: search || undefined,
+      genders: filters.genders.length ? filters.genders : undefined,
+      createdByIds: filters.createdById ? [Number(filters.createdById)] : undefined,
+      cities: filters.city.trim() ? [filters.city.trim()] : undefined,
+      facilityIds: filters.facilityId ? [Number(filters.facilityId)] : undefined,
+      locationIds: filters.locationId ? [Number(filters.locationId)] : undefined,
+      panelIds: filters.panelIds.length ? filters.panelIds.map(Number) : undefined,
+      testIds: filters.testIds.length ? filters.testIds.map(Number) : undefined,
+      isAlertPatientFlag: flagged ? true : undefined,
+      statuses: showDeleted ? ["deleted"] : undefined,
+      startDate: filters.startDate || undefined,
+      endDate: filters.endDate || undefined,
+    }),
+    [search, filters, flagged, showDeleted],
+  );
 
   const { data, isLoading, isError, error, isFetching } = usePatientList({
+    ...baseQuery,
     page: page + 1,
     limit: rowsPerPage,
-    search: search || undefined,
-    genders: filters.genders.length ? filters.genders : undefined,
-    createdByIds: filters.createdById ? [Number(filters.createdById)] : undefined,
-    cities: filters.city.trim() ? [filters.city.trim()] : undefined,
-    facilityIds: filters.facilityId ? [Number(filters.facilityId)] : undefined,
-    locationIds: filters.locationId ? [Number(filters.locationId)] : undefined,
-    panelIds: filters.panelIds.length ? filters.panelIds.map(Number) : undefined,
-    testIds: filters.testIds.length ? filters.testIds.map(Number) : undefined,
-    isAlertPatientFlag: flagged ? true : undefined,
-    startDate: filters.startDate || undefined,
-    endDate: filters.endDate || undefined,
   });
 
   const patients: Patient[] = data?.docs ?? [];
   const total = data?.total ?? 0;
   const cols = COLUMNS.filter((c) => isVisible(c.key));
 
-  const exportCsv = () => {
-    if (patients.length === 0) {
-      toast.warning("No patients to export on this page.");
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    if (total === 0) {
+      toast.warning("No patients to export.");
       return;
     }
-    const header = cols.map((c) => c.label);
-    const rows = patients.map((p) => cols.map((c) => csvCell(c.key, p)));
-    const csv = [header, ...rows]
-      .map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "patients.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    setExporting(true);
+    try {
+      // Export every matching row (respecting current filters), not just the page.
+      const all = await patientApi.list({ ...baseQuery, page: 1, limit: total });
+      const rowsData = all.docs ?? [];
+      const header = cols.map((c) => c.label);
+      const rows = rowsData.map((p) => cols.map((c) => csvCell(c.key, p)));
+      const csv = [header, ...rows]
+        .map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "patients.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${rowsData.length} patient(s).`);
+    } catch (e) {
+      toast.error((e as { message?: string })?.message ?? "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleRecover = (p: Patient) => {
+    const name = [p.firstName, p.lastName].filter(Boolean).join(" ") || `#${p.id}`;
+    recover.mutate(p.id, {
+      onSuccess: () => toast.success(`Recovered ${name}.`),
+      onError: (e) => toast.error(e?.message ?? "Could not recover the patient."),
+    });
   };
 
   return (
@@ -194,10 +224,19 @@ export default function PatientList() {
           >
             <Flag className="h-4 w-4" /> Flagged{flaggedTotal > 0 ? ` (${flaggedTotal})` : ""}
           </Button>
+          <Button
+            variant={showDeleted ? "default" : "outline"}
+            size="sm"
+            className="h-9 gap-1.5"
+            onClick={() => setShowDeleted((d) => !d)}
+            title="Show soft-deleted patients (recover them from here)"
+          >
+            <Trash2 className="h-4 w-4" /> Deleted
+          </Button>
           <PatientFilters userOptions={userOptions} value={filters} onChange={setFilters} />
           <ColumnPreferences columns={COLUMNS} visible={visible} onToggle={toggle} />
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={exportCsv}>
-            <Download className="h-4 w-4" /> CSV
+          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={exportCsv} disabled={exporting}>
+            {exporting ? <Spinner className="h-4 w-4" /> : <Download className="h-4 w-4" />} CSV
           </Button>
           <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => setBulkOpen(true)}>
             <Upload className="h-4 w-4" /> Bulk Upload
@@ -244,12 +283,24 @@ export default function PatientList() {
                     </TableCell>
                   ))}
                   <TableCell className="text-right">
-                    <Link
-                      href={`/patient/${patient.id}`}
-                      className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5")}
-                    >
-                      <Eye className="h-4 w-4" /> View
-                    </Link>
+                    {showDeleted ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5"
+                        disabled={recover.isPending}
+                        onClick={() => handleRecover(patient)}
+                      >
+                        <RotateCcw className="h-4 w-4" /> Recover
+                      </Button>
+                    ) : (
+                      <Link
+                        href={`/patient/${patient.id}`}
+                        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5")}
+                      >
+                        <Eye className="h-4 w-4" /> View
+                      </Link>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

@@ -1,5 +1,6 @@
 import { DetailField, DetailSection } from "@/components/detail-field";
 
+import { MARITAL_STATUS_OPTIONS, optionTitle } from "../../patient.options";
 import type { Patient } from "../../patient.types";
 
 const yesNo = (v?: boolean | null) => (v ? "Yes" : "No");
@@ -13,7 +14,7 @@ export default function AdditionalDetailsTab({ patient }: { patient: Patient }) 
         {/* SSN is never returned by the API (HIPAA minimum-necessary) */}
         <DetailField label="Social Security Number" value={undefined} />
         <DetailField label="Nationality" value={patient.nationality} capitalize />
-        <DetailField label="Marital Status" value={patient.maritalStatus} capitalize />
+        <DetailField label="Marital Status" value={optionTitle(MARITAL_STATUS_OPTIONS, patient.maritalStatus) || undefined} />
         <DetailField label="Degree" value={patient.degree} capitalize />
         <DetailField label="Notes" value={patient.notes} />
       </DetailSection>

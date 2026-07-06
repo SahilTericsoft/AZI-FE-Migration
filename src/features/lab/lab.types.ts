@@ -112,3 +112,18 @@ export interface LabToggleResult {
   id: number;
   isActive: boolean;
 }
+
+/** Which catalog entity a lab assignment links to. */
+export type LabAssignmentKind = "tests" | "panels" | "biomarkers";
+
+/** A lab <-> test/panel/biomarker assignment row (`LinkLabTest/Panel/Biomarker`). */
+export interface LabAssignment {
+  id: number;
+  labId: number | null;
+  testId?: number | null;
+  panelId?: number | null;
+  biomarkerId?: number | null;
+  isActive: boolean | null;
+  createdAt?: string;
+  updatedAt?: string;
+}

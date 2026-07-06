@@ -4,17 +4,21 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Power, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DetailField } from "@/components/ui/detail";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/cn";
+import { useUserOptions } from "@/features/user/user.queries";
+import { userFullName } from "@/features/user/user.types";
 
-import { useDeletePatient, usePatient } from "../patient.queries";
+import { useDeletePatient, usePatient, useTogglePatient } from "../patient.queries";
+import PatientFormDialog from "./patient-form-dialog";
 import AdditionalDetailsTab from "./tabs/additional-details-tab";
 import ActivityLogsTab from "./tabs/activity-logs-tab";
 import BasicDetailsTab from "./tabs/basic-details-tab";
@@ -33,7 +37,10 @@ export default function PatientDetail({ patientId }: { patientId: number }) {
   const router = useRouter();
   const { data: patient, isLoading, isError } = usePatient(patientId);
   const deletePatient = useDeletePatient();
+  const togglePatient = useTogglePatient();
+  const { data: usersData } = useUserOptions();
   const [tab, setTab] = useState("basic");
+  const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -56,6 +63,9 @@ export default function PatientDetail({ patientId }: { patientId: number }) {
 
   const fullName = [patient.firstName, patient.lastName].filter(Boolean).join(" ");
   const created = patient.createdAt ? new Date(patient.createdAt).toLocaleString() : "—";
+  const createdByName =
+    (usersData?.docs ?? []).map((u) => (u.id === patient.createdBy ? userFullName(u) : null)).find(Boolean) ??
+    (patient.createdBy != null ? `#${patient.createdBy}` : "—");
 
   const handleDelete = async () => {
     if (!window.confirm(`Delete patient "${fullName}"?`)) return;
@@ -65,6 +75,13 @@ export default function PatientDetail({ patientId }: { patientId: number }) {
     } catch {
       /* error toast handled by the client interceptor */
     }
+  };
+
+  const handleToggle = () => {
+    togglePatient.mutate(patientId, {
+      onSuccess: (r) => toast.success(r.isActive ? "Patient activated." : "Patient deactivated."),
+      onError: (e) => toast.error(e?.message ?? "Could not update the patient."),
+    });
   };
 
   return (
@@ -88,20 +105,35 @@ export default function PatientDetail({ patientId }: { patientId: number }) {
             </div>
             <div className="mt-3 flex flex-wrap gap-x-10 gap-y-3">
               <DetailField label="Patient ID" value={patient.id} />
-              <DetailField label="Created By" value={patient.createdBy ?? undefined} />
+              <DetailField label="Created By" value={createdByName} />
               <DetailField label="Created Timestamp" value={created} />
             </div>
           </div>
-          <Button
-            variant="outline"
-            className="gap-2 self-start border-destructive/40 text-destructive hover:bg-destructive/5"
-            onClick={handleDelete}
-            disabled={deletePatient.isPending}
-          >
-            <Trash2 className="h-4 w-4" /> Delete Patient
-          </Button>
+          <div className="flex flex-wrap gap-2 self-start">
+            <Button variant="outline" className="gap-2" onClick={() => setEditOpen(true)}>
+              <Pencil className="h-4 w-4" /> Edit
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={handleToggle}
+              disabled={togglePatient.isPending}
+            >
+              <Power className="h-4 w-4" /> {patient.isActive ? "Deactivate" : "Activate"}
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/5"
+              onClick={handleDelete}
+              disabled={deletePatient.isPending}
+            >
+              <Trash2 className="h-4 w-4" /> Delete Patient
+            </Button>
+          </div>
         </div>
       </Card>
+
+      <PatientFormDialog open={editOpen} onClose={() => setEditOpen(false)} patient={patient} />
 
       <Card className="p-0">
         <Tabs value={tab} onValueChange={setTab}>

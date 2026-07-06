@@ -8,6 +8,7 @@ import type { ApiError, Paginated } from "@/core/api/types";
 
 import { patientApi } from "./patient.api";
 import type {
+  Allergy,
   Patient,
   PatientCreateRequest,
   PatientEditRequest,
@@ -22,7 +23,20 @@ export const patientKeys = {
   detail: (id: number | string) => ["patient", "detail", id] as const,
   insurances: (patientId: number | string) =>
     ["patient", "insurances", patientId] as const,
+  allergies: ["patient", "allergies"] as const,
 };
+
+/** Reference list of allergies, used to resolve a patient's `allergieIds`. */
+export const useAllergies = (enabled = true) =>
+  useQuery<Allergy[], ApiError>({
+    queryKey: patientKeys.allergies,
+    queryFn: async () => {
+      const res = await patientApi.allergies.list({ limit: 500 });
+      return Array.isArray(res) ? res : (res.docs ?? []);
+    },
+    staleTime: 5 * 60_000,
+    enabled,
+  });
 
 export const usePatientList = (query: PatientListQuery = {}) =>
   useQuery<Paginated<Patient>, ApiError>({

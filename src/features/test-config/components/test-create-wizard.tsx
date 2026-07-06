@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import type { ApiError } from "@/core/api/types";
 import { useAuth } from "@/features/auth/auth-context";
+import { labApi } from "@/features/lab/lab.api";
 import { useLabLiteList } from "@/features/lab/lab.queries";
 import {
   useDepartmentOptions,
@@ -182,8 +183,17 @@ export default function TestCreateWizard() {
   };
 
   const handleFinish = async () => {
-    await saveStep({ labIds: form.labIds, status: "active" }, step);
-    router.push("/test-configuration?active-tab=test");
+    if (testId == null) return;
+    setError(null);
+    try {
+      // Activate the test, then persist the lab assignments via the lab service
+      // (`labIds` isn't a column on Test — it lives in LinkLabTest).
+      await update.mutateAsync({ id: testId, body: { status: "active" } });
+      await labApi.assignments.setForEntity("tests", testId, form.labIds);
+      router.push("/test-configuration?active-tab=test");
+    } catch (e) {
+      setError((e as ApiError)?.message ?? "Could not save lab assignments.");
+    }
   };
 
   return (

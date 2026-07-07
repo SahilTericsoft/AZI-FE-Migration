@@ -56,7 +56,8 @@
       "Bash(cd /Users/mohamedimran/Documents/GitHub/AZI-Migration/backend; echo \"=== tail of lab/controller.py ===\"; tail -6 services/lab/controller.py; echo \"=== line count ===\"; wc -l services/lab/controller.py)",
       "Bash(cd /Users/mohamedimran/Documents/GitHub/AZI-Migration/backend; echo \"=== tail router ===\"; tail -8 services/lab/router.py; echo \"=== model import line ===\"; grep -n \"from services.lab.models import\" services/lab/router.py)",
       "Read(//Users/mohamedimran/Documents/GitHub/AZI-Migration/backend/migrations/**)",
-      "Bash(cd /Users/mohamedimran/Documents/GitHub/AZI-Migration/backend; grep -n \"customField3\\\\|LinkLab\" migrations/pending_migrations.sql)"
+      "Bash(cd /Users/mohamedimran/Documents/GitHub/AZI-Migration/backend; grep -n \"customField3\\\\|LinkLab\" migrations/pending_migrations.sql)",
+      "Bash(cd /Users/mohamedimran/Documents/GitHub/AI-admin-UI; echo \"=== legacy test-configuration screen ===\"; find src/screens/test-configuration -type f; echo \"=== tabs/labels in the legacy TC screen ===\"; grep -rniE \"tab|label:|Test|Panel|Profile|Biomarker|Instrument\" src/screens/test-configuration/*.tsx 2>/dev/null | grep -iE \"tab|label|'Test'|\\\\\"Test\\\\\"|Panel|Profile|Biomarker|Instrument\" | head -30)"
     ],
     "additionalDirectories": [
       "/Users/mohamedimran/Documents/GitHub/AZI-Migration/backend/services/lab",

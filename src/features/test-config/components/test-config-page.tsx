@@ -1,19 +1,22 @@
 "use client";
 
-import { Alert } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import BiomarkerTab from "./biomarker-tab";
-import InstrumentTab from "./instrument-tab";
 import PanelTab from "./panel-tab";
 import TestTab from "./test-tab";
 
+/**
+ * Test Configuration. The visible names are the product/legacy names, which do
+ * NOT match the backend entity names:
+ *   FE "Test"    → BE `biomarker`   (BiomarkerTab)
+ *   FE "Panel"   → BE `test`        (TestTab)
+ *   FE "Profile" → BE `panel`       (PanelTab)
+ */
 const TABS = [
   { key: "test", label: "Test" },
   { key: "panel", label: "Panel" },
-  { key: "biomarker", label: "Biomarker" },
-  { key: "instrument", label: "Instrument" },
   { key: "profile", label: "Profile" },
 ];
 
@@ -34,43 +37,21 @@ export default function TestConfigPage({ initialTab }: { initialTab?: string }) 
             ))}
           </TabsList>
           <div className="p-6">
+            {/* FE "Test" → BE biomarkers */}
             <TabsContent value="test" className="mt-0">
-              <TestTab />
-            </TabsContent>
-            <TabsContent value="panel" className="mt-0">
-              <PanelTab />
-            </TabsContent>
-            <TabsContent value="biomarker" className="mt-0">
               <BiomarkerTab />
             </TabsContent>
-            <TabsContent value="instrument" className="mt-0">
-              <InstrumentTab />
+            {/* FE "Panel" → BE tests */}
+            <TabsContent value="panel" className="mt-0">
+              <TestTab />
             </TabsContent>
+            {/* FE "Profile" → BE panels */}
             <TabsContent value="profile" className="mt-0">
-              <ProfileTab />
+              <PanelTab />
             </TabsContent>
           </div>
         </Tabs>
       </Card>
-    </div>
-  );
-}
-
-function ProfileTab() {
-  return (
-    <div className="flex flex-col gap-3">
-      <Alert>
-        <strong>Profiles are not yet available in the migrated backend.</strong> In the
-        live app a Profile groups one or more Panels and Tests, but the migrated{" "}
-        <code>test_config</code> service only exposes Tests, Panels and Biomarkers — there
-        is no Profile model or API yet. This tab is a placeholder until a Profile service
-        is added to the backend.
-      </Alert>
-      <p className="text-sm text-muted-foreground">
-        Once the backend exposes a Profile resource, this tab will list Profiles (Profile
-        ID, Profile Name, Panel(s), Test(s), Status) and feed the Test Order dropdown the
-        same way Panels and Tests do.
-      </p>
     </div>
   );
 }

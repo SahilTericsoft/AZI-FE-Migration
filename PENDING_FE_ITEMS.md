@@ -20,25 +20,49 @@ Last reviewed: 2026-07-06.
 - ✅ **Patient** — gender vocabulary unified + dropdown fallbacks; Activate/Deactivate; deleted filter + Recover; Created-By name; allergy names + enum titles; CSV exports all rows. (BE 500 fixed — missing `Patients` columns migrated.)
 - ✅ **Lab ↔ test/panel/biomarker assignment (BE)** — `LinkLabTests/Panels/Biomarkers` + `/lab/assignments/*` endpoints.
 - ✅ **Test wizard "Assign Lab"** now persists via `/lab/assignments/tests/by-entity/{id}` (was a silent no-op).
+- ✅ **Test Configuration §A** — detail pages + edit + delete + assign-lab for all three tabs; rows clickable + row actions; CPT/ICD CRUD hooks; **tabs relabeled to product naming (see mapping below).**
 
 ---
+
+> ### ⚠️ Test Configuration naming (product ≠ backend)
+> The visible tab names do **not** match the backend entity names. Everything is
+> wired to the correct backend endpoint; only the labels/routes use FE names:
+>
+> | FE tab | Backend entity | List component | Detail route | Create |
+> |--------|----------------|----------------|--------------|--------|
+> | **Test** | `biomarker` | `biomarker-tab` | `/test-configuration/test/[id]` → `BiomarkerDetail` | dialog |
+> | **Panel** | `test` | `test-tab` | `/test-configuration/panel/[id]` → `TestDetail` | wizard `/panel/new` |
+> | **Profile** | `panel` | `panel-tab` | `/test-configuration/profile/[id]` → `PanelDetail` | dialog |
+>
+> Only 3 tabs (Biomarker/Instrument tabs removed). `AssignLabCard` still passes
+> the **backend** `kind` (`biomarkers`/`tests`/`panels`).
+
+> ### Test Configuration — legacy-parity rebuild COMPLETE (2026-07-07)
+> - **Test tab (BE biomarker)** — ✅ list chrome (filters/CSV/column-prefs/toggle-confirm); 4-step wizard (Basic Details → Report Configuration deep builder → Report Type → Assign Lab, draft-resume); detail view/edit (all fields + config view/edit + report type + assign lab); delete.
+> - **Panel tab (BE test)** — ✅ list chrome; **7-step wizard** (Basic Details → Report Type → ICD Code → CPT Code → Configuration → Assign Lab → Attachments); detail view/edit with Basic/Report Config/ICD-CPT/Assigned Labs/**Attachments** tabs; delete.
+> - **Profile tab (BE panel)** — ✅ list chrome; create dialog (Panels + Tests); detail view/edit (Panels/Tests/Assigned Labs); delete. (Migrated uses a detail page instead of the legacy drawer.)
+> - **Backend (AZI-Migration)** — ✅ `static-data` endpoints; ✅ `BiomarkerReportConfigurations` table + `/biomarkers/{id}/configurations` CRUD; ✅ `sampleTypes` catalog filter; ✅ `Tests.attachments` + `/tests/{id}/attachments` upload/remove.
+>
+> **Backend DB actions before testing:**
+> 1. `python -m scripts.init_db` — creates `BiomarkerReportConfigurations` table.
+> 2. `psql "$DATABASE_URL" -f migrations/pending_migrations.sql` — adds `Tests.attachments`.
+> 3. Attachment uploads need `AZURE_STORAGE_CONNECTION_STRING` set (else 503, same as lab attachments).
 
 ## A. Modules in progress (partially migrated)
 
 ### Test Configuration 🟨
 | Item | State | BE? | Priority |
 |------|:----:|:----:|:----:|
-| View / Detail pages for Test, Panel, Biomarker (rows not clickable) | ⬜ | FE-only (`GET /{id}`) | 🔴 |
-| Edit existing Panel / Biomarker (no update UI; only `useUpdateTest` exists) | ⬜ | FE-only (`PUT /{id}`) | 🔴 |
-| Edit existing Test (wizard is create-only; no `/test/[id]/edit` entry) | ⬜ | FE-only | 🔴 |
-| Delete for Test / Panel / Biomarker / CPT / ICD (API has `remove`, no UI) | ⬜ | FE-only (`DELETE /{id}`) | 🟠 |
-| Panel create is stubbed ("full lab wizard depends on services not yet migrated") — assign tests/biomarkers | ⬜ | FE-only (Panel has `testIds`/`biomarkerIds`) | 🟠 |
-| Biomarker deep config (report config, POC config, layout, report type) — currently a small dialog | ⬜ | FE-only (fields exist on model) | 🟠 |
-| CPT / ICD standalone management UI (currently only pickers) | ⬜ | FE-only (full CRUD exists) | 🟡 |
-| Assign-Lab for **Panel** and **Biomarker** (test done) | ⬜ | FE-only (BE endpoints exist) | 🟠 |
+| View / Detail pages for Test, Panel, Profile (rows clickable + row actions) | ✅ | FE-only (`GET /{id}`) | 🔴 |
+| Edit existing Test / Panel / Profile (edit dialogs) | ✅ | FE-only (`PUT /{id}`) | 🔴 |
+| Delete for Test / Panel / Profile (list row action + detail page) | ✅ | FE-only (`DELETE /{id}`) | 🟠 |
+| Assign-Lab for **Test (=biomarker)** and **Profile-panels (=panel)** — shared `AssignLabCard` | ✅ | FE-only (BE endpoints exist) | 🟠 |
+| Profile tab (BE `panel`) now real — was a placeholder; lists + edits panels | ✅ | FE-only | 🟡 |
+| Profile create — assign Panels (BE `testIds`) + Tests (BE `biomarkerIds`); create dialog only sets panels, edit sets both | 🟨 | FE-only | 🟠 |
+| Biomarker (=FE Test) deep config (POC config, layout, report type) — edit covers report format only | 🟨 | FE-only (fields exist on model) | 🟠 |
+| CPT / ICD standalone management UI — CRUD hooks + `code-tab.tsx` built, **not surfaced** (3-tab request) | 🟨 | FE-only (full CRUD exists) | 🟡 |
 | Lab detail: show/manage the tests/panels it offers (`/assignments/{kind}/by-lab/{id}`) | ⬜ | FE-only | 🟡 |
 | Test / Biomarker **attachments** step | ⬜ | **BE+FE** (no attachments field/endpoint) | 🟡 |
-| **Profile** tab (groups panels + tests) | ⬜ | **BE+FE** (no Profile model) | 🟡 |
 
 ### Patient 🟨
 | Item | State | BE? | Priority |

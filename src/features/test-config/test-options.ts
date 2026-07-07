@@ -18,6 +18,16 @@ export const REPORT_FORMATS: Option[] = [
   { title: "Quantitative", code: "Quantitative" },
 ];
 
+/**
+ * Biomarker (FE "Test") Report Type. Adds "Manual" (POC) over the panel set.
+ * Legacy behaviour: "Manual" → isPocConfigReq, "Quantitative" → isConfigurationRequired.
+ */
+export const BIOMARKER_REPORT_FORMATS: Option[] = [
+  { title: "Qualitative", code: "Qualitative" },
+  { title: "Quantitative", code: "Quantitative" },
+  { title: "Manual (POC)", code: "Manual" },
+];
+
 /** Test/Panel Category (legacy `biomarkerTestCategory`). */
 export const TEST_CATEGORIES: Option[] = [
   { title: "General", code: "General" },

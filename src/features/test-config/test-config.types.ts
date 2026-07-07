@@ -5,6 +5,21 @@
 
 import type { BaseEntity } from "@/core/api/types";
 
+/** Populated `createdBy` user summary the list endpoints attach to each row. */
+export interface CreatedByDetails {
+  id?: number;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
+/** An uploaded document record (test attachments). */
+export interface Attachment {
+  attachmentName: string;
+  secureUrl: string;
+  mimeType?: string | null;
+  size?: number | null;
+}
+
 export interface Panel extends BaseEntity {
   name: string | null;
   code: string | null;
@@ -17,6 +32,7 @@ export interface Panel extends BaseEntity {
   hasOrderingLimit?: boolean | null;
   alertLimit?: number | null;
   maxLimit?: number | null;
+  createdByDetails?: CreatedByDetails | null;
 }
 
 export interface Test extends BaseEntity {
@@ -25,6 +41,7 @@ export interface Test extends BaseEntity {
   sampleType?: string | null;
   sampleCollectionDeviceName?: string | null;
   sampleQuantity?: string | null;
+  reportFormat?: string | null;
   biomarkerIds?: number[] | null;
   testCategory?: string | null;
   description?: string | null;
@@ -48,15 +65,58 @@ export interface Test extends BaseEntity {
   cptCodeDetails?: Array<Record<string, unknown>> | null;
   // Report Type — layout designer payload.
   testLayoutDetails?: Array<Record<string, unknown>> | null;
+  attachments?: Attachment[] | null;
+  createdByDetails?: CreatedByDetails | null;
 }
 
 export interface Biomarker extends BaseEntity {
   name: string | null;
   code: string | null;
   sampleType?: string | null;
+  sampleCollectionDeviceName?: string | null;
   reportFormat?: string | null;
   description?: string | null;
   status?: string | null;
+  // Basic Details — reference links (ids into lab_os Departments/Reagents/Instruments).
+  departmentIds?: number[] | null;
+  reagentIds?: number[] | null;
+  instrumentIds?: number[] | null;
+  // Report Type flags (derived from reportFormat: Manual → POC, Quantitative → config).
+  isPocConfigReq?: boolean | null;
+  isConfigurationRequired?: boolean | null;
+  pocConfigArr?: string[] | null;
+  // Report Type — layout designer payload.
+  biomarkerLayoutDetails?: Array<Record<string, unknown>> | null;
+  isIndividuallyOffered?: boolean | null;
+  internalBiomarkerId?: string | null;
+  createdByDetails?: CreatedByDetails | null;
+}
+
+/** One reference-range configuration rule (qualitative adds result + color). */
+export interface BiomarkerConfigRule {
+  value1?: string | null;
+  value2?: string | null;
+  expression?: string | null;
+  units?: string | null;
+  result?: string | null;
+  color?: string | null;
+}
+
+/** A per-biomarker reference-range configuration (`/biomarkers/{id}/configurations`). */
+export interface BiomarkerReportConfiguration extends BaseEntity {
+  biomarkerId?: number | null;
+  gender?: string | null;
+  age?: string | null;
+  rules?: BiomarkerConfigRule[] | null;
+  expectedResults?: string | null;
+  isBiomarkerNoteAvailable?: boolean | null;
+  biomarkerNotes?: string | null;
+}
+
+/** A static option (title/code) from the static-data endpoints. */
+export interface StaticOption {
+  title: string;
+  code: string | boolean;
 }
 
 export interface CptCode extends BaseEntity {
@@ -75,6 +135,7 @@ export interface CatalogListQuery {
   search?: string;
   createdByIds?: number[];
   statuses?: string[];
+  sampleTypes?: string[];
   startDate?: string;
   endDate?: string;
   sort?: Record<string, "ASC" | "DESC">;

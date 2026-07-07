@@ -30,6 +30,7 @@ export const SERVICE = {
   result: "/result", // PHI (whole router requires auth)
   integration: "/integration",
   support: "/support", // Support Center + Resources
+  staticData: "/static-data", // small UI option catalogs (expressions, age, gender, yes/no)
 } as const;
 
 /** Sub-routers under the user service. */

@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Paperclip, Trash2, Upload } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MultiCombobox } from "@/components/ui/combobox";
@@ -23,7 +24,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Stepper } from "@/components/ui/stepper";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/cn";
 import type { ApiError } from "@/core/api/types";
 import { useAuth } from "@/features/auth/auth-context";
@@ -35,6 +36,7 @@ import {
   useReagentOptions,
 } from "@/features/lab-os/lab-os.queries";
 
+import { testConfigApi } from "../test-config.api";
 import {
   useBiomarkerOptions,
   useCptCodeOptions,
@@ -50,8 +52,21 @@ import {
   SAMPLE_COLLECTION_DEVICES,
   SAMPLE_TYPES,
 } from "../test-options";
+import type { Attachment } from "../test-config.types";
+import ReportTypeDesigner, {
+  emptyReportLayout,
+  type ReportLayoutValue,
+} from "./report-type-designer";
 
-const STEPS = ["Basic Details", "Report Configuration", "Report Type", "Assign Lab"];
+const STEPS = [
+  "Basic Details",
+  "Report Type",
+  "ICD Code",
+  "CPT Code",
+  "Configuration",
+  "Assign Lab",
+  "Attachments",
+];
 
 interface WizardState {
   name: string;
@@ -96,18 +111,13 @@ const INITIAL: WizardState = {
   layout: "layout1", disclaimer: "", footNote: "", labIds: [],
 };
 
-const LAYOUTS = [
-  { title: "Standard (single table)", code: "layout1" },
-  { title: "Grouped tables", code: "layout3" },
-  { title: "Quantitative", code: "layout5" },
-];
-
 export default function TestCreateWizard() {
   const router = useRouter();
   const { user } = useAuth();
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<WizardState>(INITIAL);
+  const [reportLayout, setReportLayout] = useState<ReportLayoutValue>(emptyReportLayout());
   const [testId, setTestId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,6 +137,18 @@ export default function TestCreateWizard() {
 
   const categoryOptions = useMemo(() => categoriesForReportFormat(form.reportFormat), [form.reportFormat]);
 
+  // The panel's selected tests (biomarkers) are the options for report blocks.
+  const reportTestOptions = useMemo(
+    () =>
+      form.biomarkerIds.map((id) => {
+        const b = (biomarkersQ.data ?? []).find((x) => x.id === id);
+        return { id, label: b?.name ?? b?.code ?? `#${id}` };
+      }),
+    [form.biomarkerIds, biomarkersQ.data],
+  );
+
+  // Dept/Reagent/Analyser come from Lab-OS reference data with no management
+  // screen yet — captured when present but not blocking.
   const step1Valid =
     form.name.trim() !== "" &&
     form.code.trim().length >= 3 &&
@@ -136,9 +158,6 @@ export default function TestCreateWizard() {
     form.reportFormat !== "" &&
     form.testCategory !== "" &&
     form.biomarkerIds.length > 0 &&
-    form.departmentIds.length > 0 &&
-    form.reagentIds.length > 0 &&
-    form.instrumentIds.length > 0 &&
     form.resultingMode !== "";
 
   const busy = create.isPending || update.isPending;
@@ -163,11 +182,13 @@ export default function TestCreateWizard() {
       loginUserId: user?.id,
     };
     try {
-      const test = await create.mutateAsync(payload);
+      const test = testId
+        ? await update.mutateAsync({ id: testId, body: payload })
+        : await create.mutateAsync(payload);
       setTestId(test.id);
       setStep(1);
     } catch (e) {
-      setError((e as ApiError)?.message ?? "Could not create the test.");
+      setError((e as ApiError)?.message ?? "Could not create the panel.");
     }
   };
 
@@ -182,44 +203,49 @@ export default function TestCreateWizard() {
     }
   };
 
-  const handleFinish = async () => {
+  const saveAssignLab = async () => {
     if (testId == null) return;
     setError(null);
     try {
-      // Activate the test, then persist the lab assignments via the lab service
-      // (`labIds` isn't a column on Test — it lives in LinkLabTest).
-      await update.mutateAsync({ id: testId, body: { status: "active" } });
       await labApi.assignments.setForEntity("tests", testId, form.labIds);
-      router.push("/test-configuration?active-tab=test");
+      setStep(6);
     } catch (e) {
       setError((e as ApiError)?.message ?? "Could not save lab assignments.");
     }
   };
 
+  const handleFinish = async () => {
+    if (testId == null) return;
+    setError(null);
+    try {
+      await update.mutateAsync({ id: testId, body: { status: "active" } });
+      toast.success("Panel saved.");
+      router.push("/test-configuration?active-tab=panel");
+    } catch (e) {
+      setError((e as ApiError)?.message ?? "Could not finish.");
+    }
+  };
+
   return (
     <div className="shadcn-scope flex flex-col gap-5 text-foreground">
-      <h2 className="text-2xl font-bold">Adding Test</h2>
+      <h2 className="text-2xl font-bold">Adding Panel</h2>
 
       <Stepper steps={STEPS} activeStep={step} />
 
       <Card className="p-6">
-        {error && (
-          <Alert variant="destructive" className="mb-3">
-            {error}
-          </Alert>
-        )}
+        {error && <Alert variant="destructive" className="mb-3">{error}</Alert>}
 
         {step === 0 && (
           <div className="flex flex-col gap-5">
             <DetailSection title="Basic Details">
               <div className={GRID2}>
                 <div className="space-y-1.5">
-                  <Label>Test Name *</Label>
+                  <Label>Panel Name *</Label>
                   <Input value={form.name} onChange={(e) => set("name", e.target.value.slice(0, 50))} />
                   <p className="text-xs text-muted-foreground">{form.name.length}/50</p>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Test Code *</Label>
+                  <Label>Panel Code *</Label>
                   <Input value={form.code} onChange={(e) => set("code", e.target.value.toUpperCase().slice(0, 4))} />
                   <p className="text-xs text-muted-foreground">3–4 characters</p>
                 </div>
@@ -235,7 +261,7 @@ export default function TestCreateWizard() {
               </div>
 
               <MultiIdSelect
-                label="Select Test(s) / Biomarkers"
+                label="Select Test(s)"
                 options={(biomarkersQ.data ?? []).map((b) => ({ id: b.id, label: b.name ?? b.code ?? `#${b.id}` }))}
                 value={form.biomarkerIds}
                 onChange={(v) => set("biomarkerIds", v)}
@@ -252,7 +278,7 @@ export default function TestCreateWizard() {
             <DetailSection title="Ordering Limits">
               <label className="flex items-center gap-2 text-sm">
                 <Switch checked={form.hasOrderingLimit} onCheckedChange={(c) => set("hasOrderingLimit", c)} />
-                Set an ordering limit for this test
+                Set an ordering limit for this panel
               </label>
               {form.hasOrderingLimit && (
                 <div className={GRID2}>
@@ -273,89 +299,74 @@ export default function TestCreateWizard() {
         )}
 
         {step === 1 && (
-          <div className="flex flex-col gap-5">
-            <DetailSection title="Intake & State Reporting">
-              <label className="flex items-center gap-2 text-sm">
-                <Switch checked={form.isIntakeFormRequired} onCheckedChange={(c) => set("isIntakeFormRequired", c)} />
-                Intake form required
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Switch checked={form.isStateReportingRequired} onCheckedChange={(c) => set("isStateReportingRequired", c)} />
-                State reporting required
-              </label>
-              {form.isStateReportingRequired && (
-                <div className={GRID2}>
-                  <SelectField label="Reporting Schedule" value={form.reportingSchedule} onChange={(v) => set("reportingSchedule", v)} options={REPORTING_SCHEDULES} />
-                  <TextInput label="State Reporting URL" value={form.stateReportingUrl} onChange={(v) => set("stateReportingUrl", v)} />
-                  <TextInput label="LOINC Panel Name" value={form.loincName} onChange={(v) => set("loincName", v)} />
-                  <TextInput label="LOINC Specimen Code" value={form.loincCode} onChange={(v) => set("loincCode", v)} />
-                </div>
-              )}
-              <label className="flex items-center gap-2 text-sm">
-                <Switch checked={form.isBulkImportRequired} onCheckedChange={(c) => set("isBulkImportRequired", c)} />
-                Bulk import required
-              </label>
-            </DetailSection>
-
-            <div className="h-px bg-border" />
-
-            <DetailSection title="Billing Codes">
-              <label className="flex items-center gap-2 text-sm">
-                <Switch checked={form.isIcdCodeRequired} onCheckedChange={(c) => set("isIcdCodeRequired", c)} />
-                ICD codes required
-              </label>
-              {form.isIcdCodeRequired && (
-                <MultiIdSelect
-                  label="ICD Code(s)"
-                  options={(icdQ.data ?? []).map((c) => ({
-                    id: c.id,
-                    label: `${"icdCode" in c ? c.icdCode : c.id}${c.description ? ` — ${c.description}` : ""}`,
-                  }))}
-                  value={form.icdCodes}
-                  onChange={(v) => set("icdCodes", v)}
-                  loading={icdQ.isLoading}
-                />
-              )}
-              <label className="flex items-center gap-2 text-sm">
-                <Switch checked={form.isCptCodeRequired} onCheckedChange={(c) => set("isCptCodeRequired", c)} />
-                CPT codes required
-              </label>
-              {form.isCptCodeRequired && (
-                <MultiIdSelect
-                  label="CPT Code(s)"
-                  options={(cptQ.data ?? []).map((c) => ({
-                    id: c.id,
-                    label: `${c.cptCode ?? `#${c.id}`}${c.description ? ` — ${c.description}` : ""}`,
-                  }))}
-                  value={form.cptCodes}
-                  onChange={(v) => set("cptCodes", v)}
-                  loading={cptQ.isLoading}
-                />
-              )}
-            </DetailSection>
+          <div className="flex flex-col gap-4">
+            <h3 className="text-base font-bold">Report Type</h3>
+            <ReportTypeDesigner value={reportLayout} onChange={setReportLayout} testOptions={reportTestOptions} />
           </div>
         )}
 
         {step === 2 && (
-          <DetailSection title="Report Layout">
-            <SelectField label="Report Layout" value={form.layout} onChange={(v) => set("layout", v)} options={LAYOUTS} />
-            <div className="space-y-1.5">
-              <Label>Disclaimer</Label>
-              <Textarea value={form.disclaimer} onChange={(e) => set("disclaimer", e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Foot Note</Label>
-              <Textarea value={form.footNote} onChange={(e) => set("footNote", e.target.value)} />
-            </div>
-            <Alert>
-              The full report designer (per-table biomarker grouping, pathogen / resistance-gene
-              blocks) is captured in <code>testLayoutDetails</code>; this step seeds the layout,
-              disclaimer and footnote.
-            </Alert>
+          <DetailSection title="ICD Code">
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={form.isIcdCodeRequired} onCheckedChange={(c) => set("isIcdCodeRequired", c)} />
+              ICD codes required
+            </label>
+            {form.isIcdCodeRequired && (
+              <MultiIdSelect
+                label="ICD Code(s)"
+                options={(icdQ.data ?? []).map((c) => ({ id: c.id, label: `${"icdCode" in c ? c.icdCode : c.id}${c.description ? ` — ${c.description}` : ""}` }))}
+                value={form.icdCodes}
+                onChange={(v) => set("icdCodes", v)}
+                loading={icdQ.isLoading}
+              />
+            )}
           </DetailSection>
         )}
 
         {step === 3 && (
+          <DetailSection title="CPT Code">
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={form.isCptCodeRequired} onCheckedChange={(c) => set("isCptCodeRequired", c)} />
+              CPT codes required
+            </label>
+            {form.isCptCodeRequired && (
+              <MultiIdSelect
+                label="CPT Code(s)"
+                options={(cptQ.data ?? []).map((c) => ({ id: c.id, label: `${c.cptCode ?? `#${c.id}`}${c.description ? ` — ${c.description}` : ""}` }))}
+                value={form.cptCodes}
+                onChange={(v) => set("cptCodes", v)}
+                loading={cptQ.isLoading}
+              />
+            )}
+          </DetailSection>
+        )}
+
+        {step === 4 && (
+          <DetailSection title="Configuration">
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={form.isIntakeFormRequired} onCheckedChange={(c) => set("isIntakeFormRequired", c)} />
+              Intake form required
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={form.isStateReportingRequired} onCheckedChange={(c) => set("isStateReportingRequired", c)} />
+              State reporting required
+            </label>
+            {form.isStateReportingRequired && (
+              <div className={GRID2}>
+                <SelectField label="Reporting Schedule" value={form.reportingSchedule} onChange={(v) => set("reportingSchedule", v)} options={REPORTING_SCHEDULES} />
+                <TextInput label="State Reporting URL" value={form.stateReportingUrl} onChange={(v) => set("stateReportingUrl", v)} />
+                <TextInput label="LOINC Panel Name" value={form.loincName} onChange={(v) => set("loincName", v)} />
+                <TextInput label="LOINC Specimen Code" value={form.loincCode} onChange={(v) => set("loincCode", v)} />
+              </div>
+            )}
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={form.isBulkImportRequired} onCheckedChange={(c) => set("isBulkImportRequired", c)} />
+              Bulk import required
+            </label>
+          </DetailSection>
+        )}
+
+        {step === 5 && (
           <DetailSection title="Assign Lab">
             <MultiIdSelect
               label="Lab(s)"
@@ -364,16 +375,15 @@ export default function TestCreateWizard() {
               onChange={(v) => set("labIds", v)}
               loading={labsQ.isLoading}
             />
-            <Alert>
-              Selecting labs makes this test orderable there. Persisted on the test record; a
-              dedicated lab–test mapping service is a later migration.
-            </Alert>
+            <Alert>Selecting labs makes this panel orderable there.</Alert>
           </DetailSection>
         )}
+
+        {step === 6 && testId != null && <AttachmentsStep testId={testId} />}
       </Card>
 
       <div className="flex items-center justify-between">
-        <Link href="/test-configuration?active-tab=test" className={cn(buttonVariants({ variant: "ghost" }), "gap-1.5")}>
+        <Link href="/test-configuration?active-tab=panel" className={cn(buttonVariants({ variant: "ghost" }), "gap-1.5")}>
           <ArrowLeft className="h-4 w-4" /> Cancel
         </Link>
         <div className="flex gap-2">
@@ -389,9 +399,34 @@ export default function TestCreateWizard() {
             </Button>
           )}
           {step === 1 && (
-            <Button
-              disabled={busy}
-              className="min-w-[130px] gap-1.5"
+            <StepNext
+              busy={busy}
+              onClick={() =>
+                saveStep(
+                  {
+                    testLayoutDetails: [
+                      {
+                        layout: reportLayout.layout,
+                        disclaimer: reportLayout.disclaimer,
+                        footNote: reportLayout.footNote,
+                        blocks: reportLayout.blocks,
+                      },
+                    ],
+                  },
+                  2,
+                )
+              }
+            />
+          )}
+          {step === 2 && (
+            <StepNext busy={busy} onClick={() => saveStep({ isIcdCodeRequired: form.isIcdCodeRequired, icdCodes: form.icdCodes }, 3)} />
+          )}
+          {step === 3 && (
+            <StepNext busy={busy} onClick={() => saveStep({ isCptCodeRequired: form.isCptCodeRequired, cptCodes: form.cptCodes }, 4)} />
+          )}
+          {step === 4 && (
+            <StepNext
+              busy={busy}
               onClick={() =>
                 saveStep(
                   {
@@ -406,35 +441,14 @@ export default function TestCreateWizard() {
                           loincCode: form.loincCode,
                         }
                       : null,
-                    isIcdCodeRequired: form.isIcdCodeRequired,
-                    icdCodes: form.icdCodes,
-                    isCptCodeRequired: form.isCptCodeRequired,
-                    cptCodes: form.cptCodes,
                   },
-                  2,
+                  5,
                 )
               }
-            >
-              {busy && <Spinner className="h-4 w-4" />}
-              {busy ? "Saving…" : "Next"}
-            </Button>
+            />
           )}
-          {step === 2 && (
-            <Button
-              disabled={busy}
-              className="min-w-[130px] gap-1.5"
-              onClick={() =>
-                saveStep(
-                  { testLayoutDetails: [{ layout: form.layout, disclaimer: form.disclaimer, footNote: form.footNote }] },
-                  3,
-                )
-              }
-            >
-              {busy && <Spinner className="h-4 w-4" />}
-              {busy ? "Saving…" : "Next"}
-            </Button>
-          )}
-          {step === 3 && (
+          {step === 5 && <StepNext busy={busy} onClick={saveAssignLab} />}
+          {step === 6 && (
             <Button onClick={handleFinish} disabled={busy} className="min-w-[140px] gap-1.5">
               {busy && <Spinner className="h-4 w-4" />}
               {busy ? "Saving…" : "Finish"}
@@ -443,6 +457,96 @@ export default function TestCreateWizard() {
         </div>
       </div>
     </div>
+  );
+}
+
+function StepNext({ busy, onClick }: { busy: boolean; onClick: () => void }) {
+  return (
+    <Button disabled={busy} className="min-w-[130px] gap-1.5" onClick={onClick}>
+      {busy && <Spinner className="h-4 w-4" />}
+      {busy ? "Saving…" : "Next"}
+    </Button>
+  );
+}
+
+function AttachmentsStep({ testId }: { testId: number }) {
+  const [items, setItems] = useState<Attachment[]>([]);
+  const [name, setName] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const upload = async (file: File) => {
+    const label = name.trim() || file.name;
+    setUploading(true);
+    try {
+      const record = await testConfigApi.testAttachments.upload(testId, label, file);
+      setItems((prev) => [...prev, record]);
+      setName("");
+      if (fileRef.current) fileRef.current.value = "";
+      toast.success("Attachment uploaded.");
+    } catch (e) {
+      toast.error((e as ApiError)?.message ?? "Attachment upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const remove = async (index: number) => {
+    try {
+      await testConfigApi.testAttachments.remove(testId, index);
+      setItems((prev) => prev.filter((_, i) => i !== index));
+    } catch (e) {
+      toast.error((e as ApiError)?.message ?? "Could not remove attachment.");
+    }
+  };
+
+  return (
+    <DetailSection title="Attachments">
+      <div className="col-span-full flex flex-col gap-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1 space-y-1.5">
+            <Label>Attachment Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Method sheet" />
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) upload(f);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-1.5"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+          >
+            {uploading ? <Spinner className="h-4 w-4" /> : <Upload className="h-4 w-4" />} Upload
+          </Button>
+        </div>
+
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No attachments uploaded yet (optional).</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {items.map((a, i) => (
+              <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                <a href={a.secureUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm hover:underline">
+                  <Paperclip className="h-4 w-4" /> {a.attachmentName}
+                  {a.mimeType && <Badge variant="secondary">{a.mimeType}</Badge>}
+                </a>
+                <Button type="button" variant="ghost" size="icon" onClick={() => remove(i)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </DetailSection>
   );
 }
 

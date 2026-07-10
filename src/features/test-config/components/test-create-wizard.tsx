@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -38,10 +38,12 @@ import {
 
 import { testConfigApi } from "../test-config.api";
 import {
+  devicesForSampleType,
   useBiomarkerOptions,
   useCptCodeOptions,
   useCreateTest,
   useIcdCodeOptions,
+  useSampleTypesWithDevices,
   useUpdateTest,
 } from "../test-config.queries";
 import {
@@ -49,8 +51,6 @@ import {
   REPORTING_SCHEDULES,
   REPORT_FORMATS,
   RESULTING_MODES,
-  SAMPLE_COLLECTION_DEVICES,
-  SAMPLE_TYPES,
 } from "../test-options";
 import type { Attachment } from "../test-config.types";
 import ReportTypeDesigner, {
@@ -124,6 +124,50 @@ export default function TestCreateWizard() {
   const set = <K extends keyof WizardState>(key: K, value: WizardState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  // Panel Code: auto-derive from the name (legacy behaviour — first 4 chars,
+  // uppercased) until the user has typed a 4-char code of their own.
+  const handleNameChange = (raw: string) => {
+    const name = raw.slice(0, 50);
+    setForm((f) => {
+      const next = { ...f, name };
+      if (name.length >= 3 && f.code.length < 4) {
+        next.code = name.slice(0, 4).toUpperCase();
+      }
+      return next;
+    });
+  };
+
+  // Live uniqueness check against the backend (`/tests/check-code`), debounced.
+  const [codeStatus, setCodeStatus] = useState<
+    "idle" | "checking" | "available" | "taken"
+  >("idle");
+
+  useEffect(() => {
+    const code = form.code.trim();
+    if (code.length < 3) {
+      setCodeStatus("idle");
+      return;
+    }
+    setCodeStatus("checking");
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const existing = (await testConfigApi.tests.checkCode(code)) as
+          | { id?: number }
+          | null;
+        // A match on the panel we are currently editing (resume) is not a clash.
+        const taken = !!existing && existing.id !== testId;
+        if (!cancelled) setCodeStatus(taken ? "taken" : "available");
+      } catch {
+        if (!cancelled) setCodeStatus("idle");
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [form.code, testId]);
+
   const create = useCreateTest();
   const update = useUpdateTest();
 
@@ -134,6 +178,17 @@ export default function TestCreateWizard() {
   const icdQ = useIcdCodeOptions();
   const cptQ = useCptCodeOptions();
   const labsQ = useLabLiteList();
+
+  // Sample types + collection devices from the backend (legacy linkage).
+  const sampleTypesQ = useSampleTypesWithDevices();
+  const sampleTypeOptions = useMemo(
+    () => (sampleTypesQ.data ?? []).map((s) => ({ title: s.sampleType, code: s.sampleType.toLowerCase() })),
+    [sampleTypesQ.data],
+  );
+  const deviceOptions = useMemo(
+    () => devicesForSampleType(form.sampleType, sampleTypesQ.data),
+    [form.sampleType, sampleTypesQ.data],
+  );
 
   const categoryOptions = useMemo(() => categoriesForReportFormat(form.reportFormat), [form.reportFormat]);
 
@@ -152,6 +207,7 @@ export default function TestCreateWizard() {
   const step1Valid =
     form.name.trim() !== "" &&
     form.code.trim().length >= 3 &&
+    codeStatus !== "taken" &&
     form.sampleType !== "" &&
     form.sampleCollectionDeviceName !== "" &&
     form.sampleQuantity.trim() !== "" &&
@@ -241,16 +297,24 @@ export default function TestCreateWizard() {
               <div className={GRID2}>
                 <div className="space-y-1.5">
                   <Label>Panel Name *</Label>
-                  <Input value={form.name} onChange={(e) => set("name", e.target.value.slice(0, 50))} />
+                  <Input value={form.name} onChange={(e) => handleNameChange(e.target.value)} />
                   <p className="text-xs text-muted-foreground">{form.name.length}/50</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Panel Code *</Label>
                   <Input value={form.code} onChange={(e) => set("code", e.target.value.toUpperCase().slice(0, 4))} />
-                  <p className="text-xs text-muted-foreground">3–4 characters</p>
+                  {codeStatus === "checking" ? (
+                    <p className="text-xs text-muted-foreground">Checking availability…</p>
+                  ) : codeStatus === "taken" ? (
+                    <p className="text-xs text-destructive">This code already exists.</p>
+                  ) : codeStatus === "available" ? (
+                    <p className="text-xs text-emerald-600">Code available.</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">3–4 characters</p>
+                  )}
                 </div>
-                <SelectField label="Sample Type" value={form.sampleType} onChange={(v) => set("sampleType", v)} options={SAMPLE_TYPES} />
-                <SelectField label="Sample Collection Device" value={form.sampleCollectionDeviceName} onChange={(v) => set("sampleCollectionDeviceName", v)} options={SAMPLE_COLLECTION_DEVICES} />
+                <SelectField label="Sample Type" value={form.sampleType} onChange={(v) => { set("sampleType", v); set("sampleCollectionDeviceName", ""); }} options={sampleTypeOptions} />
+                <SelectField label="Sample Collection Device" value={form.sampleCollectionDeviceName} onChange={(v) => set("sampleCollectionDeviceName", v)} options={deviceOptions} disabled={form.sampleType === ""} />
                 <div className="space-y-1.5">
                   <Label>Sample Quantity *</Label>
                   <Input value={form.sampleQuantity} onChange={(e) => set("sampleQuantity", e.target.value)} placeholder="e.g. 3 mL" />
@@ -301,7 +365,12 @@ export default function TestCreateWizard() {
         {step === 1 && (
           <div className="flex flex-col gap-4">
             <h3 className="text-base font-bold">Report Type</h3>
-            <ReportTypeDesigner value={reportLayout} onChange={setReportLayout} testOptions={reportTestOptions} />
+            <ReportTypeDesigner
+              value={reportLayout}
+              onChange={setReportLayout}
+              testOptions={reportTestOptions}
+              testName={form.name || undefined}
+            />
           </div>
         )}
 

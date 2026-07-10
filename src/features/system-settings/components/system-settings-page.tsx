@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AutoTriggers from "./auto-triggers";
 import DropdownControls from "./dropdown-controls";
 import GeneralConfig from "./general-config";
+import SampleTypesManager from "./sample-types-manager";
 
 export default function SystemSettingsPage() {
   return (
@@ -16,6 +17,7 @@ export default function SystemSettingsPage() {
           <TabsList className="w-full px-2">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="dropdowns">Dropdown Controls</TabsTrigger>
+            <TabsTrigger value="sample-types">Sample Types</TabsTrigger>
             <TabsTrigger value="triggers">Auto Triggers</TabsTrigger>
           </TabsList>
           <div className="p-4">
@@ -24,6 +26,9 @@ export default function SystemSettingsPage() {
             </TabsContent>
             <TabsContent value="dropdowns" className="mt-0">
               <DropdownControls />
+            </TabsContent>
+            <TabsContent value="sample-types" className="mt-0">
+              <SampleTypesManager />
             </TabsContent>
             <TabsContent value="triggers" className="mt-0">
               <AutoTriggers />

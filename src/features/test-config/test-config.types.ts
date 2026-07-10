@@ -119,6 +119,20 @@ export interface StaticOption {
   code: string | boolean;
 }
 
+/** A collection device option. */
+export interface CollectionDevice {
+  title: string;
+  code: string;
+}
+
+/** A sample type with the collection devices allowed for it (legacy linkage). */
+export interface SampleTypeWithDevices {
+  /** Present when the row is DB-backed (seeded/created); absent for defaults. */
+  id?: number;
+  sampleType: string;
+  sampleCollectionDeviceName: CollectionDevice[];
+}
+
 export interface CptCode extends BaseEntity {
   cptCode: string | null;
   description?: string | null;

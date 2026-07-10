@@ -36,8 +36,12 @@ import {
 } from "@/features/lab-os/lab-os.queries";
 
 import { testConfigApi } from "../test-config.api";
-import { useBiomarker } from "../test-config.queries";
-import { BIOMARKER_REPORT_FORMATS, SAMPLE_COLLECTION_DEVICES, SAMPLE_TYPES } from "../test-options";
+import {
+  devicesForSampleType,
+  useBiomarker,
+  useSampleTypesWithDevices,
+} from "../test-config.queries";
+import { BIOMARKER_REPORT_FORMATS } from "../test-options";
 import type { Option } from "../test-options";
 import BiomarkerConfigStep from "./biomarker-config-step";
 
@@ -102,6 +106,36 @@ export default function BiomarkerCreateWizard() {
   const set = <K extends keyof BasicState>(key: K, value: BasicState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  // Live code-uniqueness check against the backend (`/biomarkers/check-code`).
+  const [codeStatus, setCodeStatus] = useState<
+    "idle" | "checking" | "available" | "taken"
+  >("idle");
+
+  useEffect(() => {
+    const code = form.code.trim();
+    if (code.length < 3) {
+      setCodeStatus("idle");
+      return;
+    }
+    setCodeStatus("checking");
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const found = (await testConfigApi.biomarkers.checkCode(code)) as
+          | { id?: number }
+          | null;
+        const taken = !!found && found.id !== biomarkerId;
+        if (!cancelled) setCodeStatus(taken ? "taken" : "available");
+      } catch {
+        if (!cancelled) setCodeStatus("idle");
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [form.code, biomarkerId]);
+
   // Hydrate when resuming an existing (draft) biomarker.
   const { data: existing } = useBiomarker(biomarkerId);
   useEffect(() => {
@@ -130,6 +164,17 @@ export default function BiomarkerCreateWizard() {
   const instrumentsQ = useInstrumentOptions();
   const labsQ = useLabLiteList();
 
+  // Sample types + collection devices from the backend (legacy linkage).
+  const sampleTypesQ = useSampleTypesWithDevices();
+  const sampleTypeOptions = useMemo(
+    () => (sampleTypesQ.data ?? []).map((s) => ({ title: s.sampleType, code: s.sampleType.toLowerCase() })),
+    [sampleTypesQ.data],
+  );
+  const deviceOptions = useMemo(
+    () => devicesForSampleType(form.sampleType, sampleTypesQ.data),
+    [form.sampleType, sampleTypesQ.data],
+  );
+
   // Dept/Reagent/Analyser come from Lab-OS reference data that has no management
   // screen yet — they're captured when present but must not hard-block creation.
   const step1Valid =
@@ -137,6 +182,7 @@ export default function BiomarkerCreateWizard() {
     form.name.trim().length <= 65 &&
     form.code.trim().length >= 3 &&
     form.code.trim().length <= 4 &&
+    codeStatus !== "taken" &&
     form.reportFormat !== "" &&
     form.sampleType !== "" &&
     form.sampleCollectionDeviceName !== "";
@@ -246,9 +292,17 @@ export default function BiomarkerCreateWizard() {
                   value={form.code}
                   onChange={(e) => set("code", e.target.value.toUpperCase().slice(0, 4))}
                 />
-                <p className="text-xs text-muted-foreground">
-                  3–4 characters. System-generated and immutable.
-                </p>
+                {codeStatus === "checking" ? (
+                  <p className="text-xs text-muted-foreground">Checking availability…</p>
+                ) : codeStatus === "taken" ? (
+                  <p className="text-xs text-destructive">This code already exists.</p>
+                ) : codeStatus === "available" ? (
+                  <p className="text-xs text-emerald-600">Code available.</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    3–4 characters. System-generated and immutable.
+                  </p>
+                )}
               </div>
               <SelectField
                 label="Sample Type"
@@ -257,13 +311,14 @@ export default function BiomarkerCreateWizard() {
                   set("sampleType", v);
                   set("sampleCollectionDeviceName", "");
                 }}
-                options={SAMPLE_TYPES}
+                options={sampleTypeOptions}
               />
               <SelectField
                 label="Sample Collection Device"
                 value={form.sampleCollectionDeviceName}
                 onChange={(v) => set("sampleCollectionDeviceName", v)}
-                options={SAMPLE_COLLECTION_DEVICES}
+                options={deviceOptions}
+                disabled={form.sampleType === ""}
               />
               <SelectField
                 label="Report Type"

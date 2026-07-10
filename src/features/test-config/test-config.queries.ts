@@ -13,8 +13,10 @@ import type {
   CatalogListQuery,
   CptCode,
   IcdCode,
+  CollectionDevice,
   ListLiteQuery,
   Panel,
+  SampleTypeWithDevices,
   StaticOption,
   Test,
 } from "./test-config.types";
@@ -365,3 +367,64 @@ export const useGenderOptions = () =>
     queryFn: () => staticDataApi.gender(),
     staleTime: STATIC_STALE,
   });
+
+/**
+ * Sample types + the collection devices allowed for each (legacy
+ * `sampleTypeWithCollectionDevices`). Drives the Sample Type dropdown and the
+ * dependent Sample Collection Device dropdown in the Test/Panel wizards.
+ */
+export const useSampleTypesWithDevices = () =>
+  useQuery<SampleTypeWithDevices[], ApiError>({
+    queryKey: ["static-data", "sample-types"],
+    queryFn: () => staticDataApi.sampleTypes(),
+    staleTime: STATIC_STALE,
+  });
+
+const sampleTypesKey = ["static-data", "sample-types"];
+
+export const useCreateSampleType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { sampleType: string; sampleCollectionDeviceName: CollectionDevice[] }) =>
+      staticDataApi.createSampleType(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: sampleTypesKey }),
+  });
+};
+
+export const useUpdateSampleType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: number;
+      body: { sampleType?: string; sampleCollectionDeviceName?: CollectionDevice[] };
+    }) => staticDataApi.updateSampleType(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: sampleTypesKey }),
+  });
+};
+
+export const useDeleteSampleType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => staticDataApi.deleteSampleType(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: sampleTypesKey }),
+  });
+};
+
+/**
+ * Collection devices allowed for the given sample type (legacy
+ * `extractCollectionDevicesFromSampleType`). Case-insensitive so stored
+ * lowercase values resolve against the title-cased catalog.
+ */
+export const devicesForSampleType = (
+  sampleType: string,
+  catalog: SampleTypeWithDevices[] | undefined,
+): { title: string; code: string }[] => {
+  if (!sampleType || !catalog) return [];
+  const match = catalog.find(
+    (s) => s.sampleType.toLowerCase() === sampleType.toLowerCase(),
+  );
+  return match?.sampleCollectionDeviceName ?? [];
+};

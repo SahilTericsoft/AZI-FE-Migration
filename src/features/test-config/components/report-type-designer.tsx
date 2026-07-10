@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Eye, Plus, Trash2 } from "lucide-react";
 
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PdfPreview } from "@/components/ui/pdf-preview";
 import {
   Select,
   SelectContent,
@@ -22,7 +23,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+
+import { testConfigApi } from "../test-config.api";
 
 /** Report layout options (legacy layout1..layout6; layout5 is not offered). */
 export const REPORT_LAYOUTS = [
@@ -78,10 +82,13 @@ export default function ReportTypeDesigner({
   value,
   onChange,
   testOptions,
+  testName,
 }: {
   value: ReportLayoutValue;
   onChange: (next: ReportLayoutValue) => void;
   testOptions: { id: number; label: string }[];
+  /** Panel/test name, sent to the BE preview so the sample report is labelled. */
+  testName?: string;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -196,7 +203,12 @@ export default function ReportTypeDesigner({
       </div>
 
       {previewOpen && (
-        <ReportPreviewDialog value={value} nameOf={nameOf} onClose={() => setPreviewOpen(false)} />
+        <ReportPreviewDialog
+          value={value}
+          nameOf={nameOf}
+          testName={testName}
+          onClose={() => setPreviewOpen(false)}
+        />
       )}
     </div>
   );
@@ -205,67 +217,132 @@ export default function ReportTypeDesigner({
 function ReportPreviewDialog({
   value,
   nameOf,
+  testName,
   onClose,
 }: {
   value: ReportLayoutValue;
   nameOf: Map<number, string>;
+  testName?: string;
   onClose: () => void;
 }) {
   const layoutTitle = REPORT_LAYOUTS.find((l) => l.code === value.layout)?.title ?? value.layout;
+
+  const [pdf, setPdf] = useState<ArrayBuffer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Ask the backend to render the layout to a real PDF (legacy behaviour).
+  // On failure we fall back to the client-side HTML mock below.
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    testConfigApi
+      .previewTestLayout({
+        layout: value.layout,
+        // legacy non-layout6 uses `tableTitle`; layout6 uses `blocks`. Send both.
+        tableTitle: value.blocks,
+        blocks: value.blocks,
+        disclaimer: value.disclaimer,
+        footNote: value.footNote,
+        testName: testName ?? "Sample Report",
+      })
+      .then((buf) => {
+        if (!cancelled) setPdf(buf);
+      })
+      .catch((e: { message?: string }) => {
+        if (!cancelled) setError(e?.message ?? "Could not render the report preview.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [value, testName]);
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Report Preview — {layoutTitle}</DialogTitle>
         </DialogHeader>
-        <div className="max-h-[70vh] overflow-y-auto rounded-md border border-border bg-white p-6 text-black">
-          <div className="mb-4 border-b pb-3 text-center">
-            <p className="text-lg font-bold">Laboratory Report</p>
-            <p className="text-xs text-gray-500">Preview · {layoutTitle}</p>
+
+        {loading ? (
+          <div className="flex h-[60vh] items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Spinner className="h-5 w-5" /> Rendering preview…
           </div>
-          {value.blocks.filter((b) => b.title || b.biomarkerIds.length > 0).length === 0 ? (
-            <p className="py-6 text-center text-sm text-gray-400">
-              Add a block with a title and test(s) to preview the report.
-            </p>
-          ) : (
-            value.blocks.map((block, i) => (
-              <div key={i} className="mb-4">
-                <p className="mb-1 bg-gray-100 px-2 py-1 text-sm font-semibold">
-                  {block.title || `Section ${i + 1}`}
-                </p>
-                <table className="w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-xs text-gray-500">
-                      <th className="py-1 pr-2">Test</th>
-                      <th className="py-1 pr-2">Result</th>
-                      <th className="py-1">Reference</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {block.biomarkerIds.length === 0 ? (
-                      <tr><td colSpan={3} className="py-1 text-gray-400">No tests selected</td></tr>
-                    ) : (
-                      block.biomarkerIds.map((id) => (
-                        <tr key={id} className="border-b border-gray-100">
-                          <td className="py-1 pr-2">{nameOf.get(id) ?? `#${id}`}</td>
-                          <td className="py-1 pr-2 text-gray-400">—</td>
-                          <td className="py-1 text-gray-400">—</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ))
-          )}
-          {value.disclaimer && (
-            <p className="mt-4 border-t pt-2 text-xs text-gray-600"><strong>Disclaimer:</strong> {value.disclaimer}</p>
-          )}
-          {value.footNote && (
-            <p className="mt-1 text-xs text-gray-500">{value.footNote}</p>
-          )}
-        </div>
+        ) : pdf ? (
+          <PdfPreview data={pdf} />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {error && <Alert variant="destructive">{error}</Alert>}
+            <p className="text-xs text-muted-foreground">Showing an approximate preview.</p>
+            <HtmlMockPreview value={value} nameOf={nameOf} layoutTitle={layoutTitle} />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Client-side approximate preview, used as a fallback if the BE render fails. */
+function HtmlMockPreview({
+  value,
+  nameOf,
+  layoutTitle,
+}: {
+  value: ReportLayoutValue;
+  nameOf: Map<number, string>;
+  layoutTitle: string;
+}) {
+  return (
+    <div className="max-h-[60vh] overflow-y-auto rounded-md border border-border bg-white p-6 text-black">
+      <div className="mb-4 border-b pb-3 text-center">
+        <p className="text-lg font-bold">Laboratory Report</p>
+        <p className="text-xs text-gray-500">Preview · {layoutTitle}</p>
+      </div>
+      {value.blocks.filter((b) => b.title || b.biomarkerIds.length > 0).length === 0 ? (
+        <p className="py-6 text-center text-sm text-gray-400">
+          Add a block with a title and test(s) to preview the report.
+        </p>
+      ) : (
+        value.blocks.map((block, i) => (
+          <div key={i} className="mb-4">
+            <p className="mb-1 bg-gray-100 px-2 py-1 text-sm font-semibold">
+              {block.title || `Section ${i + 1}`}
+            </p>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-gray-500">
+                  <th className="py-1 pr-2">Test</th>
+                  <th className="py-1 pr-2">Result</th>
+                  <th className="py-1">Reference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {block.biomarkerIds.length === 0 ? (
+                  <tr><td colSpan={3} className="py-1 text-gray-400">No tests selected</td></tr>
+                ) : (
+                  block.biomarkerIds.map((id) => (
+                    <tr key={id} className="border-b border-gray-100">
+                      <td className="py-1 pr-2">{nameOf.get(id) ?? `#${id}`}</td>
+                      <td className="py-1 pr-2 text-gray-400">—</td>
+                      <td className="py-1 text-gray-400">—</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        ))
+      )}
+      {value.disclaimer && (
+        <p className="mt-4 border-t pt-2 text-xs text-gray-600"><strong>Disclaimer:</strong> {value.disclaimer}</p>
+      )}
+      {value.footNote && (
+        <p className="mt-1 text-xs text-gray-500">{value.footNote}</p>
+      )}
+    </div>
   );
 }

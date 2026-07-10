@@ -40,6 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { formatDateTime } from "@/lib/datetime";
 import { humanizeKey } from "@/lib/format";
 import { useUserOptions } from "@/features/user/user.queries";
@@ -271,6 +272,7 @@ function CreateProfileDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [sampleType, setSampleType] = useState("");
+  const [description, setDescription] = useState("");
   const [testIds, setTestIds] = useState<string[]>([]);
   const [biomarkerIds, setBiomarkerIds] = useState<string[]>([]);
   const [hasOrderingLimit, setHasOrderingLimit] = useState<"yes" | "no">("no");
@@ -306,6 +308,7 @@ function CreateProfileDialog({ onClose }: { onClose: () => void }) {
         name: name.trim(),
         code: code.trim(),
         sampleType: sampleType || undefined,
+        description: description.trim() || undefined,
         testIds: testIds.length > 0 ? testIds.map(Number) : undefined,
         biomarkerIds: biomarkerIds.length > 0 ? biomarkerIds.map(Number) : undefined,
         hasOrderingLimit: hasOrderingLimit === "yes",
@@ -345,6 +348,10 @@ function CreateProfileDialog({ onClose }: { onClose: () => void }) {
                 {SAMPLE_TYPE_LABELS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Description</Label>
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>Select Panel(s)</Label>

@@ -104,4 +104,13 @@ export const http = {
     axiosInstance.put<ApiResponse<T>>(url, body, config).then((r) => r.data),
   del: <T>(url: string, config?: AxiosRequestConfig) =>
     axiosInstance.delete<ApiResponse<T>>(url, config).then((r) => r.data),
+  /**
+   * Raw binary POST for endpoints that return a file (e.g. a rendered PDF)
+   * instead of the JSON `{ message, data }` envelope. Resolves to the raw
+   * `ArrayBuffer` so callers can build a Blob / object URL.
+   */
+  postBlob: (url: string, body?: unknown, config?: AxiosRequestConfig) =>
+    axiosInstance
+      .post<ArrayBuffer>(url, body, { ...config, responseType: "arraybuffer" })
+      .then((r) => r.data),
 };

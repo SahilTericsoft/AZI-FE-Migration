@@ -50,7 +50,12 @@ export default function PanelReportType({ test }: { test: Test }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <ReportTypeDesigner value={value} onChange={setValue} testOptions={testOptions} />
+      <ReportTypeDesigner
+        value={value}
+        onChange={setValue}
+        testOptions={testOptions}
+        testName={test.name ?? undefined}
+      />
       <div className="flex justify-end border-t border-border pt-4">
         <Button onClick={save} disabled={update.isPending} className="gap-1.5">
           {update.isPending && <Spinner className="h-4 w-4" />}

@@ -14,8 +14,10 @@ import type {
   CatalogListQuery,
   CptCode,
   IcdCode,
+  CollectionDevice,
   ListLiteQuery,
   Panel,
+  SampleTypeWithDevices,
   StaticOption,
   Test,
 } from "./test-config.types";
@@ -86,6 +88,24 @@ export const staticDataApi = {
   ageList: () => http.get<StaticOption[]>(`${SERVICE.staticData}/age-list`).then((r) => r.data),
   gender: () => http.get<StaticOption[]>(`${SERVICE.staticData}/gender`).then((r) => r.data),
   yesNo: () => http.get<StaticOption[]>(`${SERVICE.staticData}/yes-no`).then((r) => r.data),
+  /** Sample types with the collection devices allowed for each (legacy linkage). */
+  sampleTypes: () =>
+    http
+      .get<SampleTypeWithDevices[]>(`${SERVICE.staticData}/sample-types`)
+      .then((r) => r.data),
+  createSampleType: (body: { sampleType: string; sampleCollectionDeviceName: CollectionDevice[] }) =>
+    http
+      .post<SampleTypeWithDevices>(`${SERVICE.staticData}/sample-types`, body)
+      .then((r) => r.data),
+  updateSampleType: (
+    id: number,
+    body: { sampleType?: string; sampleCollectionDeviceName?: CollectionDevice[] },
+  ) =>
+    http
+      .put<SampleTypeWithDevices>(`${SERVICE.staticData}/sample-types/${id}`, body)
+      .then((r) => r.data),
+  deleteSampleType: (id: number) =>
+    http.del<{ id: number }>(`${SERVICE.staticData}/sample-types/${id}`).then((r) => r.data),
 };
 
 /** Test (FE "Panel") document attachments — multipart upload + remove. */
@@ -104,9 +124,17 @@ const testAttachmentsApi = {
       .then((r) => r.data),
 };
 
+/**
+ * Render a report-layout preview to a PDF (legacy `POST /test/testLayoutPreview`).
+ * Returns the raw PDF bytes; the caller turns it into an object URL to display.
+ */
+const previewTestLayout = (body: Record<string, unknown>) =>
+  http.postBlob(`${SERVICE.testConfig}/tests/layout-preview`, body);
+
 export const testConfigApi = {
   panels: createCatalogApi<Panel>(`${SERVICE.testConfig}/panels`),
   tests: createCatalogApi<Test>(`${SERVICE.testConfig}/tests`),
+  previewTestLayout,
   testAttachments: testAttachmentsApi,
   biomarkers: createCatalogApi<Biomarker>(`${SERVICE.testConfig}/biomarkers`),
   biomarkerConfigs: biomarkerConfigApi,
